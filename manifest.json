@@ -4,8 +4,7 @@
     "version": "1.0.0",
     "description": "Integrate Douban with Sonarr and Radarr",
     "permissions": [
-        "storage",
-        "notifications"
+        "storage"
     ],
     "host_permissions": [
         "*://movie.douban.com/subject/*",
