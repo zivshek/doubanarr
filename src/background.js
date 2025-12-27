@@ -1,18 +1,13 @@
 const detectedSubjects = new Map();
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    console.log('Doubanarr: received message', message.type, message);
-
     if (message.type === 'SUBJECT_DETECTED') {
         const tabId = message.tabId || (sender.tab ? sender.tab.id : null);
         if (tabId) {
             handleSubjectDetected(tabId, message)
-                .then(updatedInfo => {
-                    console.log('Doubanarr: subject processed', updatedInfo);
-                    sendResponse(updatedInfo);
-                })
+                .then(updatedInfo => sendResponse(updatedInfo))
                 .catch(err => {
-                    console.error('Doubanarr: error processing subject', err);
+                    console.error('Doubanarr: Error processing subject', err);
                     sendResponse({ success: false, error: err.message });
                 });
             return true;
@@ -72,7 +67,6 @@ async function handleSubjectDetected(tabId, info) {
 
     const imdbId = info.id || info.imdbId;
     if (!imdbId) {
-        console.warn('Doubanarr: Subject detected but no ID found', info);
         return { ...info, tabId };
     }
 
@@ -84,7 +78,6 @@ async function handleSubjectDetected(tabId, info) {
     let libraryStatus = { inLibrary: false, statusText: 'Not in Library' };
 
     if (baseUrl && apiKey && imdbId) {
-        console.log(`Doubanarr: checking library status for ${imdbId} on ${info.service} at ${baseUrl}`);
         try {
             // 1. Check if in library and get basic status
             let localItem = null;
@@ -119,7 +112,6 @@ async function handleSubjectDetected(tabId, info) {
 
                     if (isInQueue) {
                         libraryStatus.statusText = 'Downloading';
-                        // Short circuit if downloading
                         const updatedInfo = { ...info, id: imdbId, libraryStatus, tabId };
                         detectedSubjects.set(tabId, updatedInfo);
                         chrome.action.setBadgeText({ text: '', tabId: tabId });
@@ -156,7 +148,6 @@ async function handleSubjectDetected(tabId, info) {
 
     const updatedInfo = { ...info, id: imdbId, libraryStatus, tabId };
 
-    // Only show badge if NOT in library
     if (baseUrl && apiKey && !libraryStatus.inLibrary) {
         chrome.action.setBadgeText({ text: '1', tabId: tabId });
         chrome.action.setBadgeBackgroundColor({ color: '#22c55e', tabId: tabId });
@@ -168,7 +159,6 @@ async function handleSubjectDetected(tabId, info) {
     return updatedInfo;
 }
 
-// Clear info when tab is closed or navigates away
 chrome.tabs.onRemoved.addListener((tabId) => {
     detectedSubjects.delete(tabId);
 });
@@ -183,7 +173,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 });
 
 async function testConnection(service, url, apiKey) {
-    const endpoint = service === 'radarr' ? '/api/v3/system/status' : '/api/v3/system/status';
+    const endpoint = '/api/v3/system/status';
     try {
         const response = await fetch(`${url}${endpoint}?apiKey=${apiKey}`);
         if (response.ok) {
