@@ -1,110 +1,159 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DoubanArr</title>
   <style>
+    :root {
+      --primary: #0077ff;
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --border: #334155;
+    }
+
     body {
-      width: 250px;
+      width: 300px;
       padding: 15px;
-      font-family: sans-serif;
-      background: #0f172a;
-      color: white;
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', -apple-system, system-ui, sans-serif;
+      margin: 0;
     }
 
-    h2 {
-      margin-top: 0;
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .header h1 {
       font-size: 18px;
-      color: #0077ff;
+      margin: 0;
     }
 
-    p {
-      font-size: 13px;
-      color: #94a3b8;
+    .status-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+      font-size: 14px;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #475569;
+    }
+
+    .dot.green {
+      background: #22c55e;
+    }
+
+    .dot.red {
+      background: #ef4444;
     }
 
     .btn {
       display: block;
       width: 100%;
-      padding: 8px;
-      background: #1e293b;
-      color: #f8fafc;
-      border: 1px solid #334155;
-      border-radius: 4px;
+      padding: 10px;
+      background: var(--primary);
+      color: white;
       text-align: center;
       text-decoration: none;
+      border-radius: 6px;
       font-size: 14px;
+      font-weight: 600;
       margin-top: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
       cursor: pointer;
     }
 
     .btn:hover {
-      background: #334155;
+      opacity: 0.9;
     }
 
-    .status-box {
-      background: #1e293b;
-      border-radius: 8px;
-      padding: 10px;
-      margin-top: 10px;
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
     }
 
-    .status-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 5px;
+    .form-group {
+      margin-bottom: 10px;
+    }
+
+    label {
+      display: block;
       font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
     }
 
-    .dot {
-      height: 8px;
-      width: 8px;
-      border-radius: 50%;
-      display: inline-block;
-    }
-
-    .gray {
-      background-color: #94a3b8;
-    }
-
-    .green {
-      background-color: #22c55e;
-    }
-
-    .red {
-      background-color: #ef4444;
+    select {
+      width: 100%;
+      padding: 8px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text);
+      font-size: 13px;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 8px center;
+      background-size: 14px;
     }
   </style>
 </head>
 
 <body>
-  <h2>DoubanArr</h2>
+  <div class="header">
+    <img src="../icons/icon48.png" width="24" height="24">
+    <h1>DoubanArr</h1>
+  </div>
 
-  <div class="status-box" id="connection-status">
-    <div class="status-item">
-      <span>Radarr:</span>
-      <span id="radarr-status" class="dot gray"></span>
-    </div>
-    <div class="status-item">
-      <span>Sonarr:</span>
-      <span id="sonarr-status" class="dot gray"></span>
-    </div>
+  <div class="status-item">
+    <div id="radarr-status" class="dot"></div>
+    <span>Radarr</span>
+  </div>
+  <div class="status-item">
+    <div id="sonarr-status" class="dot"></div>
+    <span>Sonarr</span>
   </div>
 
   <div id="page-info" style="margin-top: 15px; border-top: 1px solid #334155; padding-top: 10px;">
-    <p id="detection-msg">Detecting Douban page...</p>
+    <p id="detection-msg" style="font-size: 13px;">Detecting Douban page...</p>
+
     <div id="discovery-actions" style="display: none; margin-top: 10px;">
-      <div id="subject-details" style="font-size: 12px; color: #94a3b8; margin-bottom: 10px;"></div>
-      <button id="add-btn" class="btn" style="background: #22c55e; border-color: #16a34a; display: none;">Add to
-        Library</button>
+      <div id="subject-details" style="font-size: 12px; color: #94a3b8; margin-bottom: 12px; font-weight: 500;"></div>
+
+      <div id="selectors-container" style="margin-bottom: 15px;">
+        <div class="form-group">
+          <label>Root Folder</label>
+          <select id="root-folder-select"></select>
+        </div>
+        <div class="form-group">
+          <label>Quality Profile</label>
+          <select id="quality-profile-select"></select>
+        </div>
+      </div>
+
+      <button id="add-btn" class="btn">Add to Library</button>
       <div id="config-error" style="display: none; color: #ef4444; font-size: 12px; margin-top: 10px;"></div>
     </div>
   </div>
 
-  <div id="global-status" style="margin-top: 10px; font-size: 12px; display: none;"></div>
+  <div id="global-status" style="margin-top: 10px; font-size: 12px; display: none; padding: 8px; border-radius: 4px;">
+  </div>
 
-  <a href="options.html" target="_blank" class="btn">Settings</a>
+  <a href="options.html" target="_blank" class="btn" style="background: var(--border); margin-top: 20px;">Settings</a>
+
   <script src="popup.js"></script>
 </body>
 

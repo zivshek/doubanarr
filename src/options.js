@@ -1,6 +1,8 @@
 document.addEventListener('DOMContentLoaded', () => {
     // Load existing settings
-    chrome.storage.sync.get(['radarrUrl', 'radarrApiKey', 'sonarrUrl', 'sonarrApiKey'], (items) => {
+    chrome.storage.sync.get([
+        'radarrUrl', 'radarrApiKey', 'sonarrUrl', 'sonarrApiKey'
+    ], (items) => {
         if (items.radarrUrl) document.getElementById('radarr-url').value = items.radarrUrl;
         if (items.radarrApiKey) document.getElementById('radarr-api-key').value = items.radarrApiKey;
         if (items.sonarrUrl) document.getElementById('sonarr-url').value = items.sonarrUrl;
@@ -47,7 +49,6 @@ document.addEventListener('DOMContentLoaded', () => {
             e.target.textContent = 'Testing...';
 
             try {
-                // Send message to background script to perform the fetch (to avoid CORS/permission issues if not set up)
                 const response = await chrome.runtime.sendMessage({
                     type: 'TEST_CONNECTION',
                     service,
@@ -58,14 +59,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (response.success) {
                     showStatus(`${service.charAt(0).toUpperCase() + service.slice(1)} connection successful!`);
                 } else {
-                    showStatus(`${service.charAt(0).toUpperCase() + service.slice(1)}: ${response.error}`, 'error');
+                    showStatus(`${service}: ${response.error}`, 'error');
                 }
             } catch (err) {
-                showStatus(`Failed to connect to background: ${err.message}`, 'error');
-            } finally {
-                e.target.disabled = false;
-                e.target.textContent = 'Test Connection';
+                showStatus(`Test failed: ${err.message}`, 'error');
             }
+
+            e.target.disabled = false;
+            e.target.textContent = 'Test Connection';
         });
     });
 });

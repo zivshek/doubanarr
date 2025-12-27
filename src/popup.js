@@ -8,6 +8,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     const configError = document.getElementById('config-error');
     const globalStatus = document.getElementById('global-status');
 
+    const rootFolderSelect = document.getElementById('root-folder-select');
+    const qualityProfileSelect = document.getElementById('quality-profile-select');
+    const selectorsContainer = document.getElementById('selectors-container');
+
     // 1. Check connections
     const settings = await chrome.storage.sync.get(['radarrUrl', 'radarrApiKey', 'sonarrUrl', 'sonarrApiKey']);
 
@@ -38,53 +42,119 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // 2. Check detected subject from background
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab) {
-        const info = await chrome.runtime.sendMessage({
+    if (tab && tab.url) {
+        let info = await chrome.runtime.sendMessage({
             type: 'GET_DETECTED_SUBJECT',
             tabId: tab.id
         });
+
+        // Fallback: Try to message the content script directly
+        if (!info && tab.url.includes('movie.douban.com/subject/')) {
+            try {
+                info = await chrome.tabs.sendMessage(tab.id, { type: 'GET_PAGE_INFO' });
+                if (info) {
+                    info.service = info.isTV ? 'sonarr' : 'radarr';
+                    await chrome.runtime.sendMessage({ type: 'SUBJECT_DETECTED', ...info });
+                }
+            } catch (err) { }
+        }
 
         if (info) {
             detectionMsg.textContent = '✅ Douban Subject Detected';
             discoveryActions.style.display = 'block';
             subjectDetails.textContent = `${info.id} (${info.isTV ? 'Series' : 'Movie'})`;
 
-            const serviceConfigured = info.service === 'radarr'
-                ? (settings.radarrUrl && settings.radarrApiKey)
-                : (settings.sonarrUrl && settings.sonarrApiKey);
+            const currentService = info.service;
+            const baseUrl = currentService === 'radarr' ? settings.radarrUrl : settings.sonarrUrl;
+            const apiKey = currentService === 'radarr' ? settings.radarrApiKey : settings.sonarrApiKey;
 
-            if (serviceConfigured) {
+            if (baseUrl && apiKey) {
+                // Fetch and populate selectors
+                selectorsContainer.style.display = 'block';
                 addBtn.style.display = 'block';
-                addBtn.textContent = `Add to ${info.service.charAt(0).toUpperCase() + info.service.slice(1)}`;
-                addBtn.onclick = async () => {
-                    addBtn.disabled = true;
-                    addBtn.textContent = 'Adding...';
+                addBtn.textContent = 'Fetching metadata...';
+                addBtn.disabled = true;
 
-                    try {
-                        const response = await chrome.runtime.sendMessage({
-                            type: 'ADD_TO_ARR',
-                            service: info.service,
-                            id: info.id,
-                            mediaType: info.isTV ? 'tv' : 'movie'
-                        });
+                try {
+                    const metaResponse = await chrome.runtime.sendMessage({
+                        type: 'FETCH_METADATA',
+                        service: currentService,
+                        url: baseUrl,
+                        apiKey: apiKey
+                    });
 
-                        if (response.success) {
-                            showGlobalStatus('Successfully added!', 'success');
-                            addBtn.style.display = 'none';
-                        } else {
-                            showGlobalStatus(`Error: ${response.error}`, 'error');
-                            addBtn.disabled = false;
-                            addBtn.textContent = `Add to ${info.service.charAt(0).toUpperCase() + info.service.slice(1)}`;
-                        }
-                    } catch (err) {
-                        showGlobalStatus(`Error: ${err.message}`, 'error');
+                    if (metaResponse.success) {
+                        // Load last used settings
+                        const lastUsed = await chrome.storage.sync.get([
+                            `${currentService}LastFolder`,
+                            `${currentService}LastProfile`
+                        ]);
+
+                        // Populate Folders
+                        rootFolderSelect.innerHTML = metaResponse.folders.map(f =>
+                            `<option value="${f.path}" ${f.path === lastUsed[`${currentService}LastFolder`] ? 'selected' : ''}>${f.path}</option>`
+                        ).join('');
+
+                        // Populate Profiles
+                        qualityProfileSelect.innerHTML = metaResponse.profiles.map(p =>
+                            `<option value="${p.id}" ${p.id == lastUsed[`${currentService}LastProfile`] ? 'selected' : ''}>${p.name}</option>`
+                        ).join('');
+
                         addBtn.disabled = false;
+                        addBtn.textContent = `Add to ${currentService.charAt(0).toUpperCase() + currentService.slice(1)}`;
+
+                        addBtn.onclick = async () => {
+                            const selectedFolder = rootFolderSelect.value;
+                            const selectedProfile = qualityProfileSelect.value;
+
+                            addBtn.disabled = true;
+                            addBtn.textContent = 'Adding...';
+
+                            try {
+                                const response = await chrome.runtime.sendMessage({
+                                    type: 'ADD_TO_ARR',
+                                    service: currentService,
+                                    id: info.id,
+                                    mediaType: info.isTV ? 'tv' : 'movie',
+                                    profileId: selectedProfile,
+                                    rootFolder: selectedFolder
+                                });
+
+                                if (response.success) {
+                                    showGlobalStatus('Successfully added!', 'success');
+                                    addBtn.style.display = 'none';
+                                    selectorsContainer.style.display = 'none';
+
+                                    // Save last used
+                                    const update = {};
+                                    update[`${currentService}LastFolder`] = selectedFolder;
+                                    update[`${currentService}LastProfile`] = selectedProfile;
+                                    chrome.storage.sync.set(update);
+                                } else {
+                                    showGlobalStatus(`Error: ${response.error}`, 'error');
+                                    addBtn.disabled = false;
+                                    addBtn.textContent = `Add to ${currentService.charAt(0).toUpperCase() + currentService.slice(1)}`;
+                                }
+                            } catch (err) {
+                                showGlobalStatus(`Error: ${err.message}`, 'error');
+                                addBtn.disabled = false;
+                            }
+                        };
+                    } else {
+                        throw new Error(metaResponse.error);
                     }
-                };
+                } catch (err) {
+                    showGlobalStatus(`Metadata Error: ${err.message}`, 'error');
+                    addBtn.style.display = 'none';
+                    selectorsContainer.style.display = 'none';
+                }
             } else {
-                configError.textContent = `⚠️ ${info.service.charAt(0).toUpperCase() + info.service.slice(1)} is not configured. Please check Settings.`;
+                configError.textContent = `⚠️ ${currentService.charAt(0).toUpperCase() + currentService.slice(1)} is not configured. Please check Settings.`;
                 configError.style.display = 'block';
+                addBtn.style.display = 'none';
             }
+        } else if (tab.url.includes('movie.douban.com/subject/')) {
+            detectionMsg.textContent = '⚠️ Subject discovered, please refresh page.';
         } else {
             detectionMsg.textContent = '❌ No Douban subject detected';
         }
@@ -93,9 +163,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     function showGlobalStatus(text, type) {
         globalStatus.textContent = text;
         globalStatus.style.display = 'block';
+        globalStatus.style.background = type === 'success' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)';
         globalStatus.style.color = type === 'success' ? '#22c55e' : '#ef4444';
         setTimeout(() => {
             globalStatus.style.display = 'none';
-        }, 3000);
+        }, 5000);
     }
 });

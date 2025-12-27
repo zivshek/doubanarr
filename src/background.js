@@ -18,13 +18,41 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true; // Keep channel open for async response
     }
 
+    if (message.type === 'FETCH_METADATA') {
+        fetchMetadata(message.service, message.url, message.apiKey)
+            .then(result => sendResponse(result))
+            .catch(err => sendResponse({ success: false, error: err.message }));
+        return true;
+    }
+
     if (message.type === 'ADD_TO_ARR') {
-        addToArr(message.service, message.id, message.mediaType)
+        addToArr(message.service, message.id, message.mediaType, message.profileId, message.rootFolder)
             .then(result => sendResponse(result))
             .catch(err => sendResponse({ success: false, error: err.message }));
         return true;
     }
 });
+
+async function fetchMetadata(service, url, apiKey) {
+    try {
+        const [profilesResp, foldersResp] = await Promise.all([
+            fetch(`${url}/api/v3/qualityprofile?apiKey=${apiKey}`),
+            fetch(`${url}/api/v3/rootfolder?apiKey=${apiKey}`)
+        ]);
+
+        if (!profilesResp.ok || !foldersResp.ok) {
+            throw new Error(`Failed to fetch metadata (Profiles: ${profilesResp.status}, Folders: ${foldersResp.status})`);
+        }
+
+        return {
+            success: true,
+            profiles: await profilesResp.json(),
+            folders: await foldersResp.json()
+        };
+    } catch (err) {
+        return { success: false, error: err.message };
+    }
+}
 
 async function handleSubjectDetected(tabId, info) {
     const settings = await chrome.storage.sync.get(['radarrUrl', 'radarrApiKey', 'sonarrUrl', 'sonarrApiKey']);
@@ -42,9 +70,18 @@ async function handleSubjectDetected(tabId, info) {
     detectedSubjects.set(tabId, info);
 }
 
-// Clear info when tab is closed
+// Clear info when tab is closed or navigates away
 chrome.tabs.onRemoved.addListener((tabId) => {
     detectedSubjects.delete(tabId);
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    if (changeInfo.status === 'loading' && changeInfo.url) {
+        if (!changeInfo.url.includes('movie.douban.com/subject/')) {
+            detectedSubjects.delete(tabId);
+            chrome.action.setBadgeText({ text: '', tabId: tabId });
+        }
+    }
 });
 
 async function testConnection(service, url, apiKey) {
@@ -62,8 +99,11 @@ async function testConnection(service, url, apiKey) {
     }
 }
 
-async function addToArr(service, id, mediaType) {
-    const settings = await chrome.storage.sync.get(['radarrUrl', 'radarrApiKey', 'sonarrUrl', 'sonarrApiKey']);
+async function addToArr(service, id, mediaType, profileId, rootFolder) {
+    const settings = await chrome.storage.sync.get([
+        'radarrUrl', 'radarrApiKey',
+        'sonarrUrl', 'sonarrApiKey'
+    ]);
     const baseUrl = service === 'radarr' ? settings.radarrUrl : settings.sonarrUrl;
     const apiKey = service === 'radarr' ? settings.radarrApiKey : settings.sonarrApiKey;
 
@@ -72,13 +112,13 @@ async function addToArr(service, id, mediaType) {
     }
 
     if (service === 'radarr') {
-        return handleRadarrAdd(baseUrl, apiKey, id);
+        return handleRadarrAdd(baseUrl, apiKey, id, profileId, rootFolder);
     } else {
-        return handleSonarrAdd(baseUrl, apiKey, id);
+        return handleSonarrAdd(baseUrl, apiKey, id, profileId, rootFolder);
     }
 }
 
-async function handleRadarrAdd(baseUrl, apiKey, imdbId) {
+async function handleRadarrAdd(baseUrl, apiKey, imdbId, profileId, rootFolder) {
     // 1. Lookup movie by IMDb ID
     const lookupUrl = `${baseUrl}/api/v3/movie/lookup/imdb?imdbId=${imdbId}&apiKey=${apiKey}`;
     const lookupResp = await fetch(lookupUrl);
@@ -89,17 +129,23 @@ async function handleRadarrAdd(baseUrl, apiKey, imdbId) {
         return { success: false, error: 'Movie already in library' };
     }
 
-    // 2. Get root folders and profiles
-    const rootFolders = await (await fetch(`${baseUrl}/api/v3/rootfolder?apiKey=${apiKey}`)).json();
-    const qualityProfiles = await (await fetch(`${baseUrl}/api/v3/qualityprofile?apiKey=${apiKey}`)).json();
+    // Use preferred settings or defaults
+    let preferredProfileId = profileId;
+    let preferredRootFolder = rootFolder;
 
-    if (!rootFolders.length || !qualityProfiles.length) throw new Error('Could not find root folder or quality profile');
+    if (!preferredProfileId || !preferredRootFolder) {
+        const rootFolders = await (await fetch(`${baseUrl}/api/v3/rootfolder?apiKey=${apiKey}`)).json();
+        const qualityProfiles = await (await fetch(`${baseUrl}/api/v3/qualityprofile?apiKey=${apiKey}`)).json();
+        if (!rootFolders.length || !qualityProfiles.length) throw new Error('Could not find root folder or quality profile');
+        preferredProfileId = preferredProfileId || qualityProfiles[0].id;
+        preferredRootFolder = preferredRootFolder || rootFolders[0].path;
+    }
 
     // 3. Add movie
     const addPayload = {
         ...movieData,
-        rootFolderPath: rootFolders[0].path,
-        qualityProfileId: qualityProfiles[0].id,
+        rootFolderPath: preferredRootFolder,
+        qualityProfileId: parseInt(preferredProfileId),
         monitored: true,
         addOptions: {
             searchForMovie: true
@@ -117,7 +163,7 @@ async function handleRadarrAdd(baseUrl, apiKey, imdbId) {
     throw new Error(errorData[0]?.errorMessage || 'Failed to add movie');
 }
 
-async function handleSonarrAdd(baseUrl, apiKey, imdbId) {
+async function handleSonarrAdd(baseUrl, apiKey, imdbId, profileId, rootFolder) {
     // 1. Lookup series by IMDb ID (Sonarr supports term=imdb:tt...)
     const lookupUrl = `${baseUrl}/api/v3/series/lookup?term=imdb:${imdbId}&apiKey=${apiKey}`;
     const lookupResp = await fetch(lookupUrl);
@@ -130,17 +176,23 @@ async function handleSonarrAdd(baseUrl, apiKey, imdbId) {
         return { success: false, error: 'Series already in library' };
     }
 
-    // 2. Get root folders and profiles
-    const rootFolders = await (await fetch(`${baseUrl}/api/v3/rootfolder?apiKey=${apiKey}`)).json();
-    const qualityProfiles = await (await fetch(`${baseUrl}/api/v3/qualityprofile?apiKey=${apiKey}`)).json();
+    // Use preferred settings or defaults
+    let preferredProfileId = profileId;
+    let preferredRootFolder = rootFolder;
 
-    if (!rootFolders.length || !qualityProfiles.length) throw new Error('Could not find root folder or quality profile');
+    if (!preferredProfileId || !preferredRootFolder) {
+        const rootFolders = await (await fetch(`${baseUrl}/api/v3/rootfolder?apiKey=${apiKey}`)).json();
+        const qualityProfiles = await (await fetch(`${baseUrl}/api/v3/qualityprofile?apiKey=${apiKey}`)).json();
+        if (!rootFolders.length || !qualityProfiles.length) throw new Error('Could not find root folder or quality profile');
+        preferredProfileId = preferredProfileId || qualityProfiles[0].id;
+        preferredRootFolder = preferredRootFolder || rootFolders[0].path;
+    }
 
     // 3. Add series
     const addPayload = {
         ...seriesData,
-        rootFolderPath: rootFolders[0].path,
-        qualityProfileId: qualityProfiles[0].id,
+        rootFolderPath: preferredRootFolder,
+        qualityProfileId: parseInt(preferredProfileId),
         monitored: true,
         addOptions: {
             searchForMissingEpisodes: true
