@@ -1,9 +1,10 @@
 document.addEventListener('DOMContentLoaded', async () => {
     const radarrDot = document.getElementById('radarr-status');
     const sonarrDot = document.getElementById('sonarr-status');
-    const detectionMsg = document.getElementById('detection-msg');
+    const pageInfo = document.getElementById('page-info');
     const discoveryActions = document.getElementById('discovery-actions');
     const subjectDetails = document.getElementById('subject-details');
+    const libraryBadge = document.getElementById('library-badge');
     const addBtn = document.getElementById('add-btn');
     const configError = document.getElementById('config-error');
     const globalStatus = document.getElementById('global-status');
@@ -48,115 +49,134 @@ document.addEventListener('DOMContentLoaded', async () => {
             tabId: tab.id
         });
 
-        // Fallback: Try to message the content script directly
+        // Fallback: Try to message the content script directly if not checked
         if (!info && tab.url.includes('movie.douban.com/subject/')) {
             try {
-                info = await chrome.tabs.sendMessage(tab.id, { type: 'GET_PAGE_INFO' });
-                if (info) {
-                    info.service = info.isTV ? 'sonarr' : 'radarr';
-                    await chrome.runtime.sendMessage({ type: 'SUBJECT_DETECTED', ...info });
+                const pageInfoFromContent = await chrome.tabs.sendMessage(tab.id, { type: 'GET_PAGE_INFO' });
+                if (pageInfoFromContent) {
+                    const subjectData = {
+                        ...pageInfoFromContent,
+                        service: pageInfoFromContent.isTV ? 'sonarr' : 'radarr',
+                        tabId: tab.id
+                    };
+                    // Re-trigger background check and WAIT for enriched info
+                    info = await chrome.runtime.sendMessage({ type: 'SUBJECT_DETECTED', ...subjectData });
                 }
             } catch (err) { }
         }
 
         if (info) {
-            detectionMsg.textContent = '✅ Douban Subject Detected';
-            discoveryActions.style.display = 'block';
-            subjectDetails.textContent = `${info.id} (${info.isTV ? 'Series' : 'Movie'})`;
+            pageInfo.style.display = 'block';
+            subjectDetails.textContent = `${info.title || info.id} (${info.isTV ? 'Series' : 'Movie'})`;
 
-            const currentService = info.service;
-            const baseUrl = currentService === 'radarr' ? settings.radarrUrl : settings.sonarrUrl;
-            const apiKey = currentService === 'radarr' ? settings.radarrApiKey : settings.sonarrApiKey;
+            if (info.libraryStatus) {
+                libraryBadge.textContent = info.libraryStatus.statusText;
+                if (info.libraryStatus.statusText === 'Downloaded') {
+                    libraryBadge.className = 'badge badge-success';
+                } else if (['Monitored', 'In Library', 'Downloading', 'Partially Downloaded'].includes(info.libraryStatus.statusText)) {
+                    libraryBadge.className = 'badge badge-warning';
+                } else {
+                    libraryBadge.className = 'badge badge-neutral';
+                }
 
-            if (baseUrl && apiKey) {
-                // Fetch and populate selectors
-                selectorsContainer.style.display = 'block';
-                addBtn.style.display = 'block';
-                addBtn.textContent = 'Fetching metadata...';
-                addBtn.disabled = true;
-
-                try {
-                    const metaResponse = await chrome.runtime.sendMessage({
-                        type: 'FETCH_METADATA',
-                        service: currentService,
-                        url: baseUrl,
-                        apiKey: apiKey
-                    });
-
-                    if (metaResponse.success) {
-                        // Load last used settings
-                        const lastUsed = await chrome.storage.sync.get([
-                            `${currentService}LastFolder`,
-                            `${currentService}LastProfile`
-                        ]);
-
-                        // Populate Folders
-                        rootFolderSelect.innerHTML = metaResponse.folders.map(f =>
-                            `<option value="${f.path}" ${f.path === lastUsed[`${currentService}LastFolder`] ? 'selected' : ''}>${f.path}</option>`
-                        ).join('');
-
-                        // Populate Profiles
-                        qualityProfileSelect.innerHTML = metaResponse.profiles.map(p =>
-                            `<option value="${p.id}" ${p.id == lastUsed[`${currentService}LastProfile`] ? 'selected' : ''}>${p.name}</option>`
-                        ).join('');
-
-                        addBtn.disabled = false;
-                        addBtn.textContent = `Add to ${currentService.charAt(0).toUpperCase() + currentService.slice(1)}`;
-
-                        addBtn.onclick = async () => {
-                            const selectedFolder = rootFolderSelect.value;
-                            const selectedProfile = qualityProfileSelect.value;
-
-                            addBtn.disabled = true;
-                            addBtn.textContent = 'Adding...';
-
-                            try {
-                                const response = await chrome.runtime.sendMessage({
-                                    type: 'ADD_TO_ARR',
-                                    service: currentService,
-                                    id: info.id,
-                                    mediaType: info.isTV ? 'tv' : 'movie',
-                                    profileId: selectedProfile,
-                                    rootFolder: selectedFolder
-                                });
-
-                                if (response.success) {
-                                    showGlobalStatus('Successfully added!', 'success');
-                                    addBtn.style.display = 'none';
-                                    selectorsContainer.style.display = 'none';
-
-                                    // Save last used
-                                    const update = {};
-                                    update[`${currentService}LastFolder`] = selectedFolder;
-                                    update[`${currentService}LastProfile`] = selectedProfile;
-                                    chrome.storage.sync.set(update);
-                                } else {
-                                    showGlobalStatus(`Error: ${response.error}`, 'error');
-                                    addBtn.disabled = false;
-                                    addBtn.textContent = `Add to ${currentService.charAt(0).toUpperCase() + currentService.slice(1)}`;
-                                }
-                            } catch (err) {
-                                showGlobalStatus(`Error: ${err.message}`, 'error');
-                                addBtn.disabled = false;
-                            }
-                        };
-                    } else {
-                        throw new Error(metaResponse.error);
-                    }
-                } catch (err) {
-                    showGlobalStatus(`Metadata Error: ${err.message}`, 'error');
-                    addBtn.style.display = 'none';
+                if (info.libraryStatus.inLibrary) {
                     selectorsContainer.style.display = 'none';
+                    addBtn.style.display = 'none';
+                } else {
+                    setupSelectors(info, settings);
                 }
             } else {
-                configError.textContent = `⚠️ ${currentService.charAt(0).toUpperCase() + currentService.slice(1)} is not configured. Please check Settings.`;
-                configError.style.display = 'block';
-                addBtn.style.display = 'none';
+                setupSelectors(info, settings);
             }
-        } else if (tab.url.includes('movie.douban.com/subject/')) {
-            detectionMsg.textContent = '⚠️ Subject discovered, please refresh page.';
+        }
+    }
+
+    async function setupSelectors(info, settings) {
+        const currentService = info.service;
+        const baseUrl = currentService === 'radarr' ? settings.radarrUrl : settings.sonarrUrl;
+        const apiKey = currentService === 'radarr' ? settings.radarrApiKey : settings.sonarrApiKey;
+
+        if (baseUrl && apiKey) {
+            selectorsContainer.style.display = 'block';
+            addBtn.style.display = 'block';
+            addBtn.textContent = 'Fetching metadata...';
+            addBtn.disabled = true;
+
+            try {
+                const metaResponse = await chrome.runtime.sendMessage({
+                    type: 'FETCH_METADATA',
+                    service: currentService,
+                    url: baseUrl,
+                    apiKey: apiKey
+                });
+
+                if (metaResponse.success) {
+                    const lastUsed = await chrome.storage.sync.get([
+                        `${currentService}LastFolder`,
+                        `${currentService}LastProfile`
+                    ]);
+
+                    rootFolderSelect.innerHTML = metaResponse.folders.map(f =>
+                        `<option value="${f.path}" ${f.path === lastUsed[`${currentService}LastFolder`] ? 'selected' : ''}>${f.path}</option>`
+                    ).join('');
+
+                    qualityProfileSelect.innerHTML = metaResponse.profiles.map(p =>
+                        `<option value="${p.id}" ${p.id == lastUsed[`${currentService}LastProfile`] ? 'selected' : ''}>${p.name}</option>`
+                    ).join('');
+
+                    addBtn.disabled = false;
+                    addBtn.textContent = `Add to ${currentService.charAt(0).toUpperCase() + currentService.slice(1)}`;
+
+                    addBtn.onclick = async () => {
+                        const selectedFolder = rootFolderSelect.value;
+                        const selectedProfile = qualityProfileSelect.value;
+
+                        addBtn.disabled = true;
+                        addBtn.textContent = 'Adding...';
+
+                        try {
+                            const response = await chrome.runtime.sendMessage({
+                                type: 'ADD_TO_ARR',
+                                service: currentService,
+                                id: info.id,
+                                mediaType: info.isTV ? 'tv' : 'movie',
+                                profileId: selectedProfile,
+                                rootFolder: selectedFolder
+                            });
+
+                            if (response.success) {
+                                showGlobalStatus('Successfully added!', 'success');
+                                addBtn.style.display = 'none';
+                                selectorsContainer.style.display = 'none';
+                                libraryBadge.textContent = 'Added';
+                                libraryBadge.className = 'badge badge-warning';
+
+                                const update = {};
+                                update[`${currentService}LastFolder`] = selectedFolder;
+                                update[`${currentService}LastProfile`] = selectedProfile;
+                                chrome.storage.sync.set(update);
+                            } else {
+                                showGlobalStatus(`Error: ${response.error}`, 'error');
+                                addBtn.disabled = false;
+                                addBtn.textContent = `Add to ${currentService.charAt(0).toUpperCase() + currentService.slice(1)}`;
+                            }
+                        } catch (err) {
+                            showGlobalStatus(`Error: ${err.message}`, 'error');
+                            addBtn.disabled = false;
+                        }
+                    };
+                } else {
+                    throw new Error(metaResponse.error);
+                }
+            } catch (err) {
+                showGlobalStatus(`Metadata Error: ${err.message}`, 'error');
+                addBtn.style.display = 'none';
+                selectorsContainer.style.display = 'none';
+            }
         } else {
-            detectionMsg.textContent = '❌ No Douban subject detected';
+            configError.textContent = `⚠️ ${currentService.charAt(0).toUpperCase() + currentService.slice(1)} is not configured.`;
+            configError.style.display = 'block';
+            addBtn.style.display = 'none';
         }
     }
 

@@ -1,9 +1,22 @@
 const detectedSubjects = new Map();
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    console.log('Doubanarr: received message', message.type, message);
+
     if (message.type === 'SUBJECT_DETECTED') {
-        handleSubjectDetected(sender.tab.id, message);
-        return;
+        const tabId = message.tabId || (sender.tab ? sender.tab.id : null);
+        if (tabId) {
+            handleSubjectDetected(tabId, message)
+                .then(updatedInfo => {
+                    console.log('Doubanarr: subject processed', updatedInfo);
+                    sendResponse(updatedInfo);
+                })
+                .catch(err => {
+                    console.error('Doubanarr: error processing subject', err);
+                    sendResponse({ success: false, error: err.message });
+                });
+            return true;
+        }
     }
 
     if (message.type === 'GET_DETECTED_SUBJECT') {
@@ -15,7 +28,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         testConnection(message.service, message.url, message.apiKey)
             .then(result => sendResponse(result))
             .catch(err => sendResponse({ success: false, error: err.message }));
-        return true; // Keep channel open for async response
+        return true;
     }
 
     if (message.type === 'FETCH_METADATA') {
@@ -57,17 +70,102 @@ async function fetchMetadata(service, url, apiKey) {
 async function handleSubjectDetected(tabId, info) {
     const settings = await chrome.storage.sync.get(['radarrUrl', 'radarrApiKey', 'sonarrUrl', 'sonarrApiKey']);
 
-    // Check if the relevant service is configured
-    const isConfigured = info.service === 'radarr'
-        ? (settings.radarrUrl && settings.radarrApiKey)
-        : (settings.sonarrUrl && settings.sonarrApiKey);
-
-    if (isConfigured) {
-        chrome.action.setBadgeText({ text: '1', tabId: tabId });
-        chrome.action.setBadgeBackgroundColor({ color: '#22c55e', tabId: tabId });
+    const imdbId = info.id || info.imdbId;
+    if (!imdbId) {
+        console.warn('Doubanarr: Subject detected but no ID found', info);
+        return { ...info, tabId };
     }
 
-    detectedSubjects.set(tabId, info);
+    let baseUrl = info.service === 'radarr' ? settings.radarrUrl : settings.sonarrUrl;
+    const apiKey = info.service === 'radarr' ? settings.radarrApiKey : settings.sonarrApiKey;
+
+    if (baseUrl && baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1);
+
+    let libraryStatus = { inLibrary: false, statusText: 'Not in Library' };
+
+    if (baseUrl && apiKey && imdbId) {
+        console.log(`Doubanarr: checking library status for ${imdbId} on ${info.service} at ${baseUrl}`);
+        try {
+            // 1. Check if in library and get basic status
+            let localItem = null;
+            if (info.service === 'radarr') {
+                const url = `${baseUrl}/api/v3/movie/lookup?term=imdb:${imdbId}&apiKey=${apiKey}`;
+                const resp = await fetch(url);
+                if (resp.ok) {
+                    const results = await resp.json();
+                    localItem = results.find(m => m.id && m.id !== 0);
+                }
+            } else {
+                const url = `${baseUrl}/api/v3/series/lookup?term=imdb:${imdbId}&apiKey=${apiKey}`;
+                const resp = await fetch(url);
+                if (resp.ok) {
+                    const results = await resp.json();
+                    localItem = results.find(s => s.id && s.id !== 0);
+                }
+            }
+
+            if (localItem) {
+                libraryStatus.inLibrary = true;
+
+                // 2. Check queue for "Downloading" status
+                const queueResp = await fetch(`${baseUrl}/api/v3/queue?apiKey=${apiKey}`);
+                if (queueResp.ok) {
+                    const queue = await queueResp.json();
+                    const queueItems = queue.records || [];
+                    const isInQueue = queueItems.some(item =>
+                        (info.service === 'radarr' && item.movieId === localItem.id) ||
+                        (info.service === 'sonarr' && item.seriesId === localItem.id)
+                    );
+
+                    if (isInQueue) {
+                        libraryStatus.statusText = 'Downloading';
+                        // Short circuit if downloading
+                        const updatedInfo = { ...info, id: imdbId, libraryStatus, tabId };
+                        detectedSubjects.set(tabId, updatedInfo);
+                        chrome.action.setBadgeText({ text: '', tabId: tabId });
+                        return updatedInfo;
+                    }
+                }
+
+                // 3. Determine Downloaded/Monitored status
+                if (info.service === 'radarr') {
+                    if (localItem.hasFile || (localItem.movieFileId && localItem.movieFileId > 0)) {
+                        libraryStatus.statusText = 'Downloaded';
+                    } else if (localItem.monitored) {
+                        libraryStatus.statusText = 'Monitored';
+                    } else {
+                        libraryStatus.statusText = 'In Library';
+                    }
+                } else {
+                    const stats = localItem.statistics;
+                    if (stats && stats.episodeFileCount === stats.episodeCount && stats.episodeCount > 0) {
+                        libraryStatus.statusText = 'Downloaded';
+                    } else if (stats && stats.episodeFileCount > 0) {
+                        libraryStatus.statusText = 'Partially Downloaded';
+                    } else if (localItem.monitored) {
+                        libraryStatus.statusText = 'Monitored';
+                    } else {
+                        libraryStatus.statusText = 'In Library';
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('Doubanarr: Status check failed', err);
+        }
+    }
+
+    const updatedInfo = { ...info, id: imdbId, libraryStatus, tabId };
+
+    // Only show badge if NOT in library
+    if (baseUrl && apiKey && !libraryStatus.inLibrary) {
+        chrome.action.setBadgeText({ text: '1', tabId: tabId });
+        chrome.action.setBadgeBackgroundColor({ color: '#22c55e', tabId: tabId });
+    } else {
+        chrome.action.setBadgeText({ text: '', tabId: tabId });
+    }
+
+    detectedSubjects.set(tabId, updatedInfo);
+    return updatedInfo;
 }
 
 // Clear info when tab is closed or navigates away
@@ -119,17 +217,17 @@ async function addToArr(service, id, mediaType, profileId, rootFolder) {
 }
 
 async function handleRadarrAdd(baseUrl, apiKey, imdbId, profileId, rootFolder) {
-    // 1. Lookup movie by IMDb ID
-    const lookupUrl = `${baseUrl}/api/v3/movie/lookup/imdb?imdbId=${imdbId}&apiKey=${apiKey}`;
+    const lookupUrl = `${baseUrl}/api/v3/movie/lookup?term=imdb:${imdbId}&apiKey=${apiKey}`;
     const lookupResp = await fetch(lookupUrl);
     if (!lookupResp.ok) throw new Error('Radarr lookup failed');
-    const movieData = await lookupResp.json();
+    const movieDataArr = await lookupResp.json();
+    if (!movieDataArr.length) throw new Error('Movie not found for addition');
+    const movieData = movieDataArr[0];
 
-    if (movieData.id) {
+    if (movieData.id && movieData.id !== 0) {
         return { success: false, error: 'Movie already in library' };
     }
 
-    // Use preferred settings or defaults
     let preferredProfileId = profileId;
     let preferredRootFolder = rootFolder;
 
@@ -141,7 +239,6 @@ async function handleRadarrAdd(baseUrl, apiKey, imdbId, profileId, rootFolder) {
         preferredRootFolder = preferredRootFolder || rootFolders[0].path;
     }
 
-    // 3. Add movie
     const addPayload = {
         ...movieData,
         rootFolderPath: preferredRootFolder,
@@ -164,7 +261,6 @@ async function handleRadarrAdd(baseUrl, apiKey, imdbId, profileId, rootFolder) {
 }
 
 async function handleSonarrAdd(baseUrl, apiKey, imdbId, profileId, rootFolder) {
-    // 1. Lookup series by IMDb ID (Sonarr supports term=imdb:tt...)
     const lookupUrl = `${baseUrl}/api/v3/series/lookup?term=imdb:${imdbId}&apiKey=${apiKey}`;
     const lookupResp = await fetch(lookupUrl);
     if (!lookupResp.ok) throw new Error('Sonarr lookup failed');
@@ -172,11 +268,10 @@ async function handleSonarrAdd(baseUrl, apiKey, imdbId, profileId, rootFolder) {
     if (!seriesDataArr.length) throw new Error('Series not found by IMDb ID');
     const seriesData = seriesDataArr[0];
 
-    if (seriesData.id) {
+    if (seriesData.id && seriesData.id !== 0) {
         return { success: false, error: 'Series already in library' };
     }
 
-    // Use preferred settings or defaults
     let preferredProfileId = profileId;
     let preferredRootFolder = rootFolder;
 
@@ -188,7 +283,6 @@ async function handleSonarrAdd(baseUrl, apiKey, imdbId, profileId, rootFolder) {
         preferredRootFolder = preferredRootFolder || rootFolders[0].path;
     }
 
-    // 3. Add series
     const addPayload = {
         ...seriesData,
         rootFolderPath: preferredRootFolder,

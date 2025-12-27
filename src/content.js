@@ -1,5 +1,13 @@
 (function () {
-    console.log('DoubanArr content script loaded');
+    console.log('Doubanarr content script loaded');
+
+    function getTitle() {
+        const titleEl = document.querySelector('h1 span[property="v:itemreviewed"]');
+        if (titleEl) {
+            return titleEl.innerText.trim();
+        }
+        return document.title.replace('(豆瓣)', '').trim();
+    }
 
     function init() {
         const info = document.getElementById('info');
@@ -14,17 +22,16 @@
         const imdbId = imdbMatch[0];
 
         // 2. Identify if it's a Movie or TV Show
-        // Douban usually has "上映日期" (Release Date) for movies and "首播" (First Aired) for TV shows.
-        // Or check the category in the breadcrumbs / meta.
         const isTV = info.innerText.includes('首播') || info.innerText.includes('集数') || info.innerText.includes('季');
         const service = isTV ? 'sonarr' : 'radarr';
-        const serviceName = isTV ? 'Sonarr' : 'Radarr';
+        const title = getTitle();
 
         // 3. Send message to background script
         chrome.runtime.sendMessage({
             type: 'SUBJECT_DETECTED',
             service,
             id: imdbId,
+            title,
             isTV
         });
     }
@@ -44,7 +51,8 @@
                 const imdbMatch = info.innerHTML.match(/tt\d+/);
                 const isTV = info.innerText.includes('首播') || info.innerText.includes('集数') || info.innerText.includes('季');
                 sendResponse({
-                    imdbId: imdbMatch ? imdbMatch[0] : null,
+                    id: imdbMatch ? imdbMatch[0] : null,
+                    title: getTitle(),
                     isTV: isTV
                 });
             } else {
