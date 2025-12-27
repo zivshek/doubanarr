@@ -80,6 +80,6 @@ const translations = {
 
 async function getTranslation(key) {
     const data = await chrome.storage.sync.get('preferredLanguage');
-    const lang = data.preferredLanguage || (navigator.language.startsWith('zh') ? 'zh' : 'en');
-    return translations[lang][key] || translations['en'][key] || key;
+    const lang = data.preferredLanguage || 'zh';
+    return translations[lang][key] || translations['zh'][key] || key;
 }

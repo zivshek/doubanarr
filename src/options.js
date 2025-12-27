@@ -10,7 +10,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (items.radarrApiKey) document.getElementById('radarr-api-key').value = items.radarrApiKey;
         if (items.sonarrUrl) document.getElementById('sonarr-url').value = items.sonarrUrl;
         if (items.sonarrApiKey) document.getElementById('sonarr-api-key').value = items.sonarrApiKey;
-        if (items.preferredLanguage) document.getElementById('preferred-language').value = items.preferredLanguage;
+        document.getElementById('preferred-language').value = items.preferredLanguage || 'zh';
     });
 
     const statusMsg = document.getElementById('global-status');
