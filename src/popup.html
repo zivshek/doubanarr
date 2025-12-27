@@ -162,12 +162,12 @@
       </div>
 
       <div id="selectors-container" style="margin-bottom: 15px;">
-        <div class="form-group">
-          <label>Root Folder</label>
+        <div class="selector-row">
+          <label for="root-folder-select" data-key="rootFolder">Root Folder</label>
           <select id="root-folder-select"></select>
         </div>
-        <div class="form-group">
-          <label>Quality Profile</label>
+        <div class="selector-row">
+          <label for="quality-profile-select" data-key="qualityProfile">Quality Profile</label>
           <select id="quality-profile-select"></select>
         </div>
       </div>
@@ -181,9 +181,11 @@
   </div>
 
   <div style="margin-top: 15px; border-top: 1px solid var(--border); padding-top: 10px;">
-    <a href="options.html" target="_blank" class="btn" style="background: var(--border); margin-top: 5px;">Settings</a>
+    <a href="options.html" target="_blank" class="btn" style="background: var(--border); margin-top: 5px;"
+      data-key="settings">Settings</a>
   </div>
 
+  <script src="i18n.js"></script>
   <script src="popup.js"></script>
 </body>
 

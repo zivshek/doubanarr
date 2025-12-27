@@ -149,41 +149,56 @@
   <div class="container">
     <header>
       <h1>Doubanarr</h1>
-      <p>Configure your Sonarr and Radarr connections</p>
+      <p id="header-desc">Configure your Sonarr and Radarr connections</p>
     </header>
 
-    <section class="card" id="radarr-section">
-      <h2>🎥 Radarr Settings</h2>
+    <section class="card" id="general-section">
+      <h2 id="general-title">⚙️ General Settings</h2>
       <div class="form-group">
-        <label for="radarr-url">Server URL</label>
+        <label for="preferred-language" id="lang-label">Language / 语言</label>
+        <select id="preferred-language"
+          style="width: 100%; padding: 0.75rem; background: var(--bg); border: 1px solid var(--border); border-radius: 0.5rem; color: var(--text);">
+          <option value="en">English</option>
+          <option value="zh">简体中文</option>
+        </select>
+      </div>
+    </section>
+
+    <section class="card" id="radarr-section">
+      <h2 id="radarr-title">🎥 Radarr Settings</h2>
+      <div class="form-group">
+        <label for="radarr-url" class="i18n-label" data-key="serverUrl">Server URL</label>
         <input type="url" id="radarr-url" placeholder="http://localhost:7878">
       </div>
       <div class="form-group">
-        <label for="radarr-api-key">API Key</label>
+        <label for="radarr-api-key" class="i18n-label" data-key="apiKey">API Key</label>
         <input type="password" id="radarr-api-key" placeholder="Enter Radarr API Key">
       </div>
-      <button class="secondary test-btn" data-service="radarr" style="margin-top: 1rem;">Test Connection</button>
+      <button class="secondary test-btn" data-service="radarr" data-key="testConnection" style="margin-top: 1rem;">Test
+        Connection</button>
     </section>
 
     <section class="card" id="sonarr-section">
-      <h2>📺 Sonarr Settings</h2>
+      <h2 id="sonarr-title">📺 Sonarr Settings</h2>
       <div class="form-group">
-        <label for="sonarr-url">Server URL</label>
+        <label for="sonarr-url" class="i18n-label" data-key="serverUrl">Server URL</label>
         <input type="url" id="sonarr-url" placeholder="http://localhost:8989">
       </div>
       <div class="form-group">
-        <label for="sonarr-api-key">API Key</label>
+        <label for="sonarr-api-key" class="i18n-label" data-key="apiKey">API Key</label>
         <input type="password" id="sonarr-api-key" placeholder="Enter Sonarr API Key">
       </div>
-      <button class="secondary test-btn" data-service="sonarr" style="margin-top: 1rem;">Test Connection</button>
+      <button class="secondary test-btn" data-service="sonarr" data-key="testConnection" style="margin-top: 1rem;">Test
+        Connection</button>
     </section>
 
     <div class="actions">
-      <button id="save-btn" class="primary">Save Settings</button>
+      <button id="save-btn" class="primary" data-key="saveSettings">Save Settings</button>
     </div>
 
     <div id="global-status" class="status-msg"></div>
   </div>
+  <script src="i18n.js"></script>
   <script src="options.js"></script>
 </body>
 

@@ -13,6 +13,32 @@ document.addEventListener('DOMContentLoaded', async () => {
     const qualityProfileSelect = document.getElementById('quality-profile-select');
     const selectorsContainer = document.getElementById('selectors-container');
 
+    // Initial UI translation
+    await translateUI();
+
+    async function translateUI() {
+        const elements = document.querySelectorAll('[data-key]');
+        for (const el of elements) {
+            const key = el.getAttribute('data-key');
+            el.textContent = await getTranslation(key);
+        }
+    }
+
+    async function getTranslatedStatus(statusText) {
+        // Map statusText from background to i18n keys
+        const statusMap = {
+            'Downloaded': 'downloaded',
+            'Monitored': 'monitored',
+            'In Library': 'inLibrary',
+            'Downloading': 'downloading',
+            'Partially Downloaded': 'partiallyDownloaded',
+            'Not in Library': 'notInLibrary',
+            'Added': 'added'
+        };
+        const key = statusMap[statusText] || statusText;
+        return await getTranslation(key);
+    }
+
     // 1. Check connections
     const settings = await chrome.storage.sync.get(['radarrUrl', 'radarrApiKey', 'sonarrUrl', 'sonarrApiKey']);
 
@@ -49,7 +75,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             tabId: tab.id
         });
 
-        // Fallback: Try to message the content script directly if not checked
         if (!info && tab.url.includes('movie.douban.com/subject/')) {
             try {
                 const pageInfoFromContent = await chrome.tabs.sendMessage(tab.id, { type: 'GET_PAGE_INFO' });
@@ -59,7 +84,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                         service: pageInfoFromContent.isTV ? 'sonarr' : 'radarr',
                         tabId: tab.id
                     };
-                    // Re-trigger background check and WAIT for enriched info
                     info = await chrome.runtime.sendMessage({ type: 'SUBJECT_DETECTED', ...subjectData });
                 }
             } catch (err) { }
@@ -67,10 +91,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (info) {
             pageInfo.style.display = 'block';
-            subjectDetails.textContent = `${info.title || info.id} (${info.isTV ? 'Series' : 'Movie'})`;
+            const typeLabel = await getTranslation(info.isTV ? 'series' : 'movie');
+            subjectDetails.textContent = `${info.title || info.id} (${typeLabel})`;
 
             if (info.libraryStatus) {
-                libraryBadge.textContent = info.libraryStatus.statusText;
+                libraryBadge.textContent = await getTranslatedStatus(info.libraryStatus.statusText);
                 if (info.libraryStatus.statusText === 'Downloaded') {
                     libraryBadge.className = 'badge badge-success';
                 } else if (['Monitored', 'In Library', 'Downloading', 'Partially Downloaded'].includes(info.libraryStatus.statusText)) {
@@ -99,7 +124,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (baseUrl && apiKey) {
             selectorsContainer.style.display = 'block';
             addBtn.style.display = 'block';
-            addBtn.textContent = 'Fetching metadata...';
+            addBtn.textContent = await getTranslation('addBtnFetching');
             addBtn.disabled = true;
 
             try {
@@ -125,14 +150,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                     ).join('');
 
                     addBtn.disabled = false;
-                    addBtn.textContent = `Add to ${currentService.charAt(0).toUpperCase() + currentService.slice(1)}`;
+                    const addToText = await getTranslation('addTo');
+                    addBtn.textContent = `${addToText} ${currentService.charAt(0).toUpperCase() + currentService.slice(1)}`;
 
                     addBtn.onclick = async () => {
                         const selectedFolder = rootFolderSelect.value;
                         const selectedProfile = qualityProfileSelect.value;
 
                         addBtn.disabled = true;
-                        addBtn.textContent = 'Adding...';
+                        addBtn.textContent = await getTranslation('addBtnAdding');
 
                         try {
                             const response = await chrome.runtime.sendMessage({
@@ -145,10 +171,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                             });
 
                             if (response.success) {
-                                showGlobalStatus('Successfully added!', 'success');
+                                showGlobalStatus(await getTranslation('successfullyAdded'), 'success');
                                 addBtn.style.display = 'none';
                                 selectorsContainer.style.display = 'none';
-                                libraryBadge.textContent = 'Added';
+                                libraryBadge.textContent = await getTranslation('added');
                                 libraryBadge.className = 'badge badge-warning';
 
                                 const update = {};
@@ -156,12 +182,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 update[`${currentService}LastProfile`] = selectedProfile;
                                 chrome.storage.sync.set(update);
                             } else {
-                                showGlobalStatus(`Error: ${response.error}`, 'error');
+                                const errPrefix = await getTranslation('error');
+                                showGlobalStatus(`${errPrefix}: ${response.error}`, 'error');
                                 addBtn.disabled = false;
-                                addBtn.textContent = `Add to ${currentService.charAt(0).toUpperCase() + currentService.slice(1)}`;
+                                addBtn.textContent = `${addToText} ${currentService.charAt(0).toUpperCase() + currentService.slice(1)}`;
                             }
                         } catch (err) {
-                            showGlobalStatus(`Error: ${err.message}`, 'error');
+                            showGlobalStatus(`${await getTranslation('error')}: ${err.message}`, 'error');
                             addBtn.disabled = false;
                         }
                     };
@@ -169,18 +196,19 @@ document.addEventListener('DOMContentLoaded', async () => {
                     throw new Error(metaResponse.error);
                 }
             } catch (err) {
-                showGlobalStatus(`Metadata Error: ${err.message}`, 'error');
+                showGlobalStatus(`${await getTranslation('metadataError')}: ${err.message}`, 'error');
                 addBtn.style.display = 'none';
                 selectorsContainer.style.display = 'none';
             }
         } else {
-            configError.textContent = `⚠️ ${currentService.charAt(0).toUpperCase() + currentService.slice(1)} is not configured.`;
+            const notConfiguredText = await getTranslation('notConfigured');
+            configError.textContent = `⚠️ ${currentService.charAt(0).toUpperCase() + currentService.slice(1)} ${notConfiguredText}`;
             configError.style.display = 'block';
             addBtn.style.display = 'none';
         }
     }
 
-    function showGlobalStatus(text, type) {
+    async function showGlobalStatus(text, type) {
         globalStatus.textContent = text;
         globalStatus.style.display = 'block';
         globalStatus.style.background = type === 'success' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)';
