@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body {
+      width: 250px;
+      padding: 15px;
+      font-family: sans-serif;
+      background: #0f172a;
+      color: white;
+    }
+
+    h2 {
+      margin-top: 0;
+      font-size: 18px;
+      color: #0077ff;
+    }
+
+    p {
+      font-size: 13px;
+      color: #94a3b8;
+    }
+
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 8px;
+      background: #1e293b;
+      color: #f8fafc;
+      border: 1px solid #334155;
+      border-radius: 4px;
+      text-align: center;
+      text-decoration: none;
+      font-size: 14px;
+      margin-top: 10px;
+      cursor: pointer;
+    }
+
+    .btn:hover {
+      background: #334155;
+    }
+
+    .status-box {
+      background: #1e293b;
+      border-radius: 8px;
+      padding: 10px;
+      margin-top: 10px;
+    }
+
+    .status-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 5px;
+      font-size: 12px;
+    }
+
+    .dot {
+      height: 8px;
+      width: 8px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .gray {
+      background-color: #94a3b8;
+    }
+
+    .green {
+      background-color: #22c55e;
+    }
+
+    .red {
+      background-color: #ef4444;
+    }
+  </style>
+</head>
+
+<body>
+  <h2>DoubanArr</h2>
+
+  <div class="status-box" id="connection-status">
+    <div class="status-item">
+      <span>Radarr:</span>
+      <span id="radarr-status" class="dot gray"></span>
+    </div>
+    <div class="status-item">
+      <span>Sonarr:</span>
+      <span id="sonarr-status" class="dot gray"></span>
+    </div>
+  </div>
+
+  <div id="page-info" style="margin-top: 15px; border-top: 1px solid #334155; padding-top: 10px;">
+    <p id="detection-msg">Detecting Douban page...</p>
+    <div id="discovery-actions" style="display: none; margin-top: 10px;">
+      <div id="subject-details" style="font-size: 12px; color: #94a3b8; margin-bottom: 10px;"></div>
+      <button id="add-btn" class="btn" style="background: #22c55e; border-color: #16a34a; display: none;">Add to
+        Library</button>
+      <div id="config-error" style="display: none; color: #ef4444; font-size: 12px; margin-top: 10px;"></div>
+    </div>
+  </div>
+
+  <div id="global-status" style="margin-top: 10px; font-size: 12px; display: none;"></div>
+
+  <a href="options.html" target="_blank" class="btn">Settings</a>
+  <script src="popup.js"></script>
+</body>
+
+</html>
