@@ -73,6 +73,7 @@
       margin-top: 10px;
       border: 1px solid rgba(255, 255, 255, 0.1);
       cursor: pointer;
+      box-sizing: border-box;
     }
 
     .btn:hover {
@@ -152,7 +153,9 @@
   <div id="global-status" style="margin-top: 10px; font-size: 12px; display: none; padding: 8px; border-radius: 4px;">
   </div>
 
-  <a href="options.html" target="_blank" class="btn" style="background: var(--border); margin-top: 20px;">Settings</a>
+  <div style="margin-top: 15px; border-top: 1px solid var(--border); padding-top: 10px;">
+    <a href="options.html" target="_blank" class="btn" style="background: var(--border); margin-top: 5px;">Settings</a>
+  </div>
 
   <script src="popup.js"></script>
 </body>
