@@ -8,7 +8,7 @@
         // 1. Extract IMDb ID
         const imdbMatch = info.innerHTML.match(/tt\d+/);
         if (!imdbMatch) {
-            console.log('DoubanArr: No IMDb ID found on this page.');
+            console.log('Doubanarr: No IMDb ID found on this page.');
             return;
         }
         const imdbId = imdbMatch[0];
