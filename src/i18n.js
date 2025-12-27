@@ -36,7 +36,9 @@ const translations = {
         settings: "Settings",
         addBtn: "Add to Library",
         addBtnFetching: "Fetching metadata...",
-        addBtnAdding: "Adding..."
+        addBtnAdding: "Adding...",
+        permissionDenied: "Permission to access the server was denied.",
+        permissionError: "Error requesting permissions."
     },
     zh: {
         settingsTitle: "Doubanarr 设置",
@@ -74,7 +76,9 @@ const translations = {
         settings: "设置",
         addBtn: "添加至库",
         addBtnFetching: "正在获取元数据...",
-        addBtnAdding: "正在添加..."
+        addBtnAdding: "正在添加...",
+        permissionDenied: "访问服务器的权限被拒绝。",
+        permissionError: "请求权限时出错。"
     }
 };
 

@@ -51,10 +51,35 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Save settings
     document.getElementById('save-btn').addEventListener('click', async () => {
+        const radarrUrl = document.getElementById('radarr-url').value.replace(/\/$/, '');
+        const sonarrUrl = document.getElementById('sonarr-url').value.replace(/\/$/, '');
+
+        const origins = [];
+        if (radarrUrl) origins.push(radarrUrl + '/*');
+        if (sonarrUrl) origins.push(sonarrUrl + '/*');
+
+        if (origins.length > 0) {
+            try {
+                // Request permission for the specific URLs
+                const granted = await new Promise((resolve) => {
+                    chrome.permissions.request({ origins }, (result) => resolve(result));
+                });
+
+                if (!granted) {
+                    showStatus('permissionDenied', 'error');
+                    return;
+                }
+            } catch (err) {
+                console.error('Permission request failed', err);
+                showStatus('permissionError', 'error');
+                return;
+            }
+        }
+
         const settings = {
-            radarrUrl: document.getElementById('radarr-url').value.replace(/\/$/, ''),
+            radarrUrl,
             radarrApiKey: document.getElementById('radarr-api-key').value,
-            sonarrUrl: document.getElementById('sonarr-url').value.replace(/\/$/, ''),
+            sonarrUrl,
             sonarrApiKey: document.getElementById('sonarr-api-key').value,
             preferredLanguage: document.getElementById('preferred-language').value
         };
@@ -72,9 +97,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             const apiKey = document.getElementById(`${service}-api-key`).value;
 
             if (!url || !apiKey) {
-                showStatus('enterBoth', 'error'); // Need to add to i18n
+                showStatus('enterBoth', 'error');
                 return;
             }
+
+            // Also check permission here for test button
+            const granted = await new Promise((resolve) => {
+                chrome.permissions.request({ origins: [url + '/*'] }, (result) => resolve(result));
+            });
+            if (!granted) return;
 
             const originalText = e.target.textContent;
             e.target.disabled = true;

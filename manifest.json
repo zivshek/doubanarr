@@ -7,7 +7,9 @@
         "storage"
     ],
     "host_permissions": [
-        "*://movie.douban.com/subject/*",
+        "*://movie.douban.com/subject/*"
+    ],
+    "optional_host_permissions": [
         "http://*/*",
         "https://*/*"
     ],
